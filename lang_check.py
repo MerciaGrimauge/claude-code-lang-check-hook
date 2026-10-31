@@ -66,14 +66,20 @@ def load_state(session):
         return None
 
 
-def save_state(session, seen):
+def save_state(session, uuids):
+    """調べ終えたエントリの uuid を、会話記録の順で最新の 2000 件まで保存する。"""
     os.makedirs(STATE_DIR, exist_ok=True)
     with open(os.path.join(STATE_DIR, f"{session}.json"), "w", encoding="utf-8") as f:
-        json.dump(sorted(seen)[-2000:], f)
+        json.dump(uuids[-2000:], f)
 
 
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "tool"
+    for stream in (sys.stdin, sys.stdout):  # 標準入出力が cp932 の環境でも、フックの JSON を UTF-8 で読み書きする
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
     data = json.load(sys.stdin)
     transcript = data.get("transcript_path", "")
     session = re.sub(r"[^\w-]", "_", data.get("session_id", "unknown"))
@@ -88,7 +94,7 @@ def main():
         if total >= MIN_CHARS and ratio > THRESHOLD:
             bad.append((ratio, t))
         seen.add(u)
-    save_state(session, seen)
+    save_state(session, [u for u, _ in entries if u in seen])  # 会話記録の順で保存する（uuid の文字列順にしない）
     if not bad:
         return
     ratio, sample = bad[-1]
